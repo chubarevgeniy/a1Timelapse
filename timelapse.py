@@ -8,52 +8,70 @@ import cv2
 import numpy as np
 import pygame
 
-class ColorFeatureDetector:
-    def __init__(self, target_color_bgr, tolerance=0.1, min_pixels=100, debug=False):
+class ColorCircleDetector:
+    def __init__(self, target_color_bgr, color_tolerance=0.1, target_radius=20, radius_tolerance=0.2, debug=False):
         self.target_color_bgr = target_color_bgr
-        self.tolerance = tolerance
-        self.min_pixels = min_pixels
+        self.color_tolerance = color_tolerance
+        self.target_radius = target_radius
+        self.radius_tolerance = radius_tolerance
         self.debug = debug
         self.last_mask = None
+        self.last_circles = []
 
     def detect(self, frame_roi):
         hsv = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2HSV)
         color = np.uint8([[self.target_color_bgr]])
         hsv_color = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)[0][0]
 
-        delta = np.array([int(180 * self.tolerance), int(255 * self.tolerance), int(255 * self.tolerance)])
+        delta = np.array([int(180 * self.color_tolerance), int(255 * self.color_tolerance), int(255 * self.color_tolerance)])
         lower = np.maximum(hsv_color - delta, [0, 0, 0])
         upper = np.minimum(hsv_color + delta, [179, 255, 255])
 
-        if self.debug:
-            print(f"Target HSV: {hsv_color}, Lower: {lower}, Upper: {upper}")
-
         mask = cv2.inRange(hsv, lower, upper)
         self.last_mask = mask
-        match = np.count_nonzero(mask) >= self.min_pixels
 
-        return match
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        self.last_circles = []
+        for cnt in contours:
+            ((x, y), radius) = cv2.minEnclosingCircle(cnt)
+            if radius < 1:
+                continue
+            area = cv2.contourArea(cnt)
+            circle_area = np.pi * radius * radius
+            circularity = area / circle_area if circle_area > 0 else 0
+            if (abs(radius - self.target_radius) <= self.target_radius * self.radius_tolerance) and (circularity > 0.2):
+                self.last_circles.append((int(x), int(y), int(radius)))
+        return len(self.last_circles) > 0
 
     def visualize(self, full_frame, roi_rect):
-        """Show debug visualization of detected feature in the ROI."""
         if self.last_mask is not None:
             top, bottom, left, right = roi_rect
             roi_frame = full_frame[top:bottom, left:right].copy()
             highlight = cv2.bitwise_and(roi_frame, roi_frame, mask=self.last_mask)
+            for (x, y, r) in self.last_circles:
+                cv2.circle(highlight, (x, y), r, (0, 0, 255), 2)
             full_frame_copy = full_frame.copy()
             full_frame_copy[top:bottom, left:right] = highlight
             cv2.rectangle(full_frame_copy, (left, top), (right, bottom), (0, 255, 255), 2)
             debug_preview = cv2.resize(full_frame_copy, (1280, 720), interpolation=cv2.INTER_AREA)
-            cv2.imshow("Debug - Full frame with ROI and detected feature", debug_preview)
+            cv2.imshow("Debug - Full frame with ROI and detected circles", debug_preview)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
 def select_roi_and_color(video_path):
-    """Interactive ROI and color selection using pygame."""
+    """Interactive ROI and color selection using pygame, with frame navigation."""
     cap = cv2.VideoCapture(video_path)
-    ret, frame = cap.read()
-    cap.release()
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    current_frame_idx = 0
+
+    def get_frame(idx):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        return ret, frame
+
+    ret, frame = get_frame(current_frame_idx)
     if not ret:
+        cap.release()
         raise ValueError("Failed to read video")
 
     PREVIEW_W, PREVIEW_H = 1280, 720
@@ -67,18 +85,20 @@ def select_roi_and_color(video_path):
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
 
+    target_radius = 20  # default radius in pixels
+    radius_tolerance = 0.2  # 20% tolerance
+    tolerance = 0.2  # color tolerance
     selecting = True
     start_pos = None
     end_pos = None
     roi_rect = None
     selected_color_bgr = None
-    min_pixels = 100
-    tolerance = 0.2  # default value
 
     while selecting:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
+                cap.release()
                 sys.exit()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click for ROI
@@ -95,7 +115,6 @@ def select_roi_and_color(video_path):
                     x1, y1 = [int(end_pos[0] / scale_x), int(end_pos[1] / scale_y)]
                     left, right = sorted([x0, x1])
                     top, bottom = sorted([y0, y1])
-                    # Clamp to frame size
                     left = max(0, min(left, orig_w - 1))
                     right = max(0, min(right, orig_w))
                     top = max(0, min(top, orig_h - 1))
@@ -109,8 +128,24 @@ def select_roi_and_color(video_path):
                     selecting = False
                 elif pygame.K_1 <= event.key <= pygame.K_9:
                     tolerance = (event.key - pygame.K_0) / 20.0
+                elif event.key == pygame.K_q:
+                    radius_tolerance = min(1.0, radius_tolerance + 0.05)
+                elif event.key == pygame.K_a:
+                    radius_tolerance = max(0.01, radius_tolerance - 0.05)
+                elif event.key == pygame.K_RIGHT:
+                    if current_frame_idx < total_frames - 1:
+                        current_frame_idx += 1
+                        ret, new_frame = get_frame(current_frame_idx)
+                        if ret:
+                            frame = new_frame
+                elif event.key == pygame.K_LEFT:
+                    if current_frame_idx > 0:
+                        current_frame_idx -= 1
+                        ret, new_frame = get_frame(current_frame_idx)
+                        if ret:
+                            frame = new_frame
             elif event.type == pygame.MOUSEWHEEL:
-                min_pixels = max(1, min_pixels + event.y * 10)
+                target_radius = max(1, target_radius + event.y)
 
         # Draw frame (resize for preview)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -132,41 +167,76 @@ def select_roi_and_color(video_path):
             )
             pygame.draw.rect(screen, (255, 0, 0), preview_rect, 2)
 
-        # Draw selected color as a circle with area = min_pixels
+        # Draw selected color as a circle with target_radius
         if selected_color_bgr is not None:
             selected_color_rgb = tuple(cv2.cvtColor(np.uint8([[selected_color_bgr]]), cv2.COLOR_BGR2RGB)[0][0])
-            radius = int(np.sqrt(min_pixels / np.pi))
-            pygame.draw.circle(screen, selected_color_rgb, (30, 30), radius)
+            preview_radius = int(target_radius * scale_x)  # or use scale_y if aspect ratio is not 1:1
+            pygame.draw.circle(screen, selected_color_rgb, (30, 30), preview_radius)
 
-        # Draw min_pixels
-        txt = font.render(f"min_pixels: {min_pixels}", True, (255, 255, 255))
+        # Draw target radius in green at (30, 30)
+        preview_radius = int(target_radius * ((scale_x + scale_y) / 2))
+        pygame.draw.circle(screen, (0, 255, 0), (30, 30), preview_radius, 2)
+
+        # If color is selected and ROI is set, draw found radius in red and all detected circles in debug mode
+        if selected_color_bgr is not None and roi_rect:
+            detector = ColorCircleDetector(
+                selected_color_bgr,
+                color_tolerance=tolerance,
+                target_radius=target_radius,
+                radius_tolerance=radius_tolerance,
+                debug=False
+            )
+            top, bottom, left, right = roi_rect
+            roi_frame = frame[top:bottom, left:right]
+            detector.detect(roi_frame)
+
+            # Draw all found circles in red at (30, 30) with their detected radius
+            for (_, _, found_radius) in detector.last_circles:
+                preview_found_radius = int(found_radius * ((scale_x + scale_y) / 2))
+                pygame.draw.circle(screen, (255, 0, 0), (30, 30), preview_found_radius, 2)
+
+            # In debug mode, draw all detected circles on the preview ROI
+            if __debug__:
+                for (x, y, r) in detector.last_circles:
+                    # Scale coordinates and radius to preview
+                    px = int((left + x) * scale_x)
+                    py = int((top + y) * scale_y)
+                    pr = int(r * ((scale_x + scale_y) / 2))
+                    pygame.draw.circle(screen, (255, 0, 0), (px, py), pr, 2)
+
+        # Draw target_radius and tolerance values
+        txt = font.render(f"radius: {target_radius}px", True, (255, 255, 255))
         screen.blit(txt, (80, 10))
-
-        # Draw tolerance value
-        txt_tol = font.render(f"tolerance: {tolerance:.2f}", True, (255, 255, 255))
+        txt_tol = font.render(f"color tol: {tolerance:.2f}", True, (255, 255, 255))
         screen.blit(txt_tol, (80, 40))
+        txt_rtol = font.render(f"radius tol: {radius_tolerance:.2f}", True, (255, 255, 255))
+        screen.blit(txt_rtol, (80, 70))
+        txt_frame = font.render(f"frame: {current_frame_idx+1}/{total_frames}", True, (255, 255, 255))
+        screen.blit(txt_frame, (80, 100))
 
         # Draw instructions
         instructions = [
             "LMB: Select ROI",
             "RMB: Pick color",
-            "Scroll: Change min_pixels",
-            "1-9: Set tolerance (0.05-0.45)",
+            "Wheel: Change radius",
+            "1-9: Set color tolerance",
+            "Q/A: Change radius tolerance",
+            "Left/Right: Change frame",
             "Enter: Confirm selection"
         ]
         for i, line in enumerate(instructions):
             txt_help = font.render(line, True, (255, 255, 0))
-            screen.blit(txt_help, (10, 70 + i * 25))
+            screen.blit(txt_help, (10, 130 + i * 25))
 
         pygame.display.flip()
         clock.tick(60)
 
     pygame.quit()
-    return roi_rect, selected_color_bgr, min_pixels, tolerance
+    cap.release()
+    return roi_rect, selected_color_bgr, tolerance, target_radius, radius_tolerance
 
 def process_video(input_path, output_path, debug=True):
-    """Process the video and save filtered frames."""
-    roi_rect, color, min_pixels, tolerance = select_roi_and_color(input_path)
+    roi_rect, color, color_tol, target_radius, radius_tol = select_roi_and_color(input_path)
 
     cap = cv2.VideoCapture(input_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -179,7 +249,7 @@ def process_video(input_path, output_path, debug=True):
     frame_buffer = []
     frame_index = 0
 
-    detector = ColorFeatureDetector(color, tolerance=tolerance, min_pixels=min_pixels, debug=debug)
+    detector = ColorCircleDetector(color, color_tolerance=color_tol, target_radius=target_radius, radius_tolerance=radius_tol, debug=debug)
 
     while True:
         ret, frame = cap.read()
@@ -190,7 +260,14 @@ def process_video(input_path, output_path, debug=True):
         if detector.detect(roi_frame):
             print(f"Frame {frame_index} passed the filter")
             if detector.debug:
-                detector.visualize(frame, roi_rect)
+                # Draw all detected circles in red on the ROI in the full frame
+                debug_frame = frame.copy()
+                for (x, y, r) in detector.last_circles:
+                    cv2.circle(debug_frame[top:bottom, left:right], (x, y), r, (0, 0, 255), 2)
+                cv2.rectangle(debug_frame, (left, top), (right, bottom), (0, 255, 255), 2)
+                debug_preview = cv2.resize(debug_frame, (1280, 720), interpolation=cv2.INTER_AREA)
+                cv2.imshow("Debug - All detected circles", debug_preview)
+                cv2.waitKey(1)  # Show for a short time, or use 0 to wait for key
             frame_buffer.append(frame)
         else:
             if frame_buffer:
