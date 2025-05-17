@@ -1,10 +1,12 @@
+import sys
+import os
+import argparse
+import tkinter as tk
+from tkinter import filedialog
+
 import cv2
 import numpy as np
 import pygame
-import os
-import tkinter as tk
-from tkinter import filedialog
-import argparse
 
 class ColorFeatureDetector:
     def __init__(self, target_color_bgr, tolerance=0.1, min_pixels=100, debug=False):
@@ -33,26 +35,27 @@ class ColorFeatureDetector:
         return match
 
     def visualize(self, full_frame, roi_rect):
+        """Show debug visualization of detected feature in the ROI."""
         if self.last_mask is not None:
-            roi_frame = full_frame[roi_rect.top:roi_rect.bottom, roi_rect.left:roi_rect.right].copy()
+            top, bottom, left, right = roi_rect
+            roi_frame = full_frame[top:bottom, left:right].copy()
             highlight = cv2.bitwise_and(roi_frame, roi_frame, mask=self.last_mask)
             full_frame_copy = full_frame.copy()
-            full_frame_copy[roi_rect.top:roi_rect.bottom, roi_rect.left:roi_rect.right] = highlight
-            cv2.rectangle(full_frame_copy, (roi_rect.left, roi_rect.top), (roi_rect.right, roi_rect.bottom), (0, 255, 255), 2)
-            # Resize for debug preview
+            full_frame_copy[top:bottom, left:right] = highlight
+            cv2.rectangle(full_frame_copy, (left, top), (right, bottom), (0, 255, 255), 2)
             debug_preview = cv2.resize(full_frame_copy, (1280, 720), interpolation=cv2.INTER_AREA)
             cv2.imshow("Debug - Full frame with ROI and detected feature", debug_preview)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
 def select_roi_and_color(video_path):
+    """Interactive ROI and color selection using pygame."""
     cap = cv2.VideoCapture(video_path)
     ret, frame = cap.read()
     cap.release()
     if not ret:
         raise ValueError("Failed to read video")
 
-    # Target preview size
     PREVIEW_W, PREVIEW_H = 1280, 720
     orig_h, orig_w = frame.shape[:2]
     scale_x = PREVIEW_W / orig_w
@@ -76,28 +79,36 @@ def select_roi_and_color(video_path):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                exit()
+                sys.exit()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click for ROI
                     start_pos = event.pos
                 elif event.button == 3:  # Right click for color
                     x, y = event.pos
-                    # Map preview coords to original frame coords
                     orig_x = int(x / scale_x)
                     orig_y = int(y / scale_y)
                     selected_color_bgr = tuple(frame[orig_y, orig_x].tolist())
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1 and start_pos:
                     end_pos = event.pos
-                    # Map preview coords to original frame coords for ROI
                     x0, y0 = [int(start_pos[0] / scale_x), int(start_pos[1] / scale_y)]
                     x1, y1 = [int(end_pos[0] / scale_x), int(end_pos[1] / scale_y)]
-                    roi_rect = pygame.Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
+                    left, right = sorted([x0, x1])
+                    top, bottom = sorted([y0, y1])
+                    # Clamp to frame size
+                    left = max(0, min(left, orig_w - 1))
+                    right = max(0, min(right, orig_w))
+                    top = max(0, min(top, orig_h - 1))
+                    bottom = max(0, min(bottom, orig_h))
+                    if right - left > 0 and bottom - top > 0:
+                        roi_rect = (top, bottom, left, right)
+                    else:
+                        roi_rect = None
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN and roi_rect and selected_color_bgr:
                     selecting = False
                 elif pygame.K_1 <= event.key <= pygame.K_9:
-                    tolerance = (event.key - pygame.K_0) / 10.0  # 1-9 -> 0.1-0.9
+                    tolerance = (event.key - pygame.K_0) / 20.0
             elif event.type == pygame.MOUSEWHEEL:
                 min_pixels = max(1, min_pixels + event.y * 10)
 
@@ -114,10 +125,10 @@ def select_roi_and_color(video_path):
                 abs(start_pos[0] - current_pos[0]), abs(start_pos[1] - current_pos[1])
             ), 2)
         elif roi_rect:
-            # Scale ROI to preview
+            top, bottom, left, right = roi_rect
             preview_rect = pygame.Rect(
-                int(roi_rect.left * scale_x), int(roi_rect.top * scale_y),
-                int(roi_rect.width * scale_x), int(roi_rect.height * scale_y)
+                int(left * scale_x), int(top * scale_y),
+                int((right - left) * scale_x), int((bottom - top) * scale_y)
             )
             pygame.draw.rect(screen, (255, 0, 0), preview_rect, 2)
 
@@ -132,7 +143,7 @@ def select_roi_and_color(video_path):
         screen.blit(txt, (80, 10))
 
         # Draw tolerance value
-        txt_tol = font.render(f"tolerance: {tolerance:.1f}", True, (255, 255, 255))
+        txt_tol = font.render(f"tolerance: {tolerance:.2f}", True, (255, 255, 255))
         screen.blit(txt_tol, (80, 40))
 
         # Draw instructions
@@ -140,7 +151,7 @@ def select_roi_and_color(video_path):
             "LMB: Select ROI",
             "RMB: Pick color",
             "Scroll: Change min_pixels",
-            "1-9: Set tolerance (0.1-0.9)",
+            "1-9: Set tolerance (0.05-0.45)",
             "Enter: Confirm selection"
         ]
         for i, line in enumerate(instructions):
@@ -154,7 +165,8 @@ def select_roi_and_color(video_path):
     return roi_rect, selected_color_bgr, min_pixels, tolerance
 
 def process_video(input_path, output_path, debug=True):
-    roi, color, min_pixels, tolerance = select_roi_and_color(input_path)
+    """Process the video and save filtered frames."""
+    roi_rect, color, min_pixels, tolerance = select_roi_and_color(input_path)
 
     cap = cv2.VideoCapture(input_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -173,11 +185,12 @@ def process_video(input_path, output_path, debug=True):
         ret, frame = cap.read()
         if not ret:
             break
-        roi_frame = frame[roi.top:roi.bottom, roi.left:roi.right]
+        top, bottom, left, right = roi_rect
+        roi_frame = frame[top:bottom, left:right]
         if detector.detect(roi_frame):
             print(f"Frame {frame_index} passed the filter")
             if detector.debug:
-                detector.visualize(frame, roi)
+                detector.visualize(frame, roi_rect)
             frame_buffer.append(frame)
         else:
             if frame_buffer:
@@ -199,7 +212,6 @@ def process_video(input_path, output_path, debug=True):
     print(f"Frames saved: {len(temp_frames)}")
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser(description="Bambu Timelapse Frame Filter")
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with extra output and visualization')
     args = parser.parse_args()
@@ -209,7 +221,7 @@ if __name__ == "__main__":
     input_video = filedialog.askopenfilename(title="Select input video", filetypes=[("MP4 files", "*.mp4"), ("All files", "*.*")])
     if not input_video:
         print("No file selected.")
-        exit()
+        sys.exit()
     base, ext = os.path.splitext(input_video)
     output_video = base + "_filtered" + ext
     process_video(input_video, output_video, debug=args.debug)
