@@ -93,6 +93,8 @@ def select_roi_and_color(video_path):
     end_pos = None
     roi_rect = None
     selected_color_bgr = None
+    detector = None
+    detector_params = None
 
     while selecting:
         for event in pygame.event.get():
@@ -179,13 +181,17 @@ def select_roi_and_color(video_path):
 
         # If color is selected and ROI is set, draw found radius in red and all detected circles in debug mode
         if selected_color_bgr is not None and roi_rect:
-            detector = ColorCircleDetector(
-                selected_color_bgr,
-                color_tolerance=tolerance,
-                target_radius=target_radius,
-                radius_tolerance=radius_tolerance,
-                debug=False
-            )
+            current_params = (selected_color_bgr, tolerance, target_radius, radius_tolerance)
+            if detector is None or detector_params != current_params:
+                detector = ColorCircleDetector(
+                    selected_color_bgr,
+                    color_tolerance=tolerance,
+                    target_radius=target_radius,
+                    radius_tolerance=radius_tolerance,
+                    debug=False
+                )
+                detector_params = current_params
+
             top, bottom, left, right = roi_rect
             roi_frame = frame[top:bottom, left:right]
             detector.detect(roi_frame)
