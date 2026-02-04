@@ -93,6 +93,8 @@ def select_roi_and_color(video_path):
     end_pos = None
     roi_rect = None
     selected_color_bgr = None
+    cached_frame_surface = None
+    last_drawn_frame_idx = -1
 
     while selecting:
         for event in pygame.event.get():
@@ -148,9 +150,12 @@ def select_roi_and_color(video_path):
                 target_radius = max(1, target_radius + event.y)
 
         # Draw frame (resize for preview)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_rgb_preview = cv2.resize(frame_rgb, (PREVIEW_W, PREVIEW_H), interpolation=cv2.INTER_AREA)
-        screen.blit(pygame.surfarray.make_surface(np.transpose(frame_rgb_preview, (1, 0, 2))), (0, 0))
+        if cached_frame_surface is None or current_frame_idx != last_drawn_frame_idx:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_rgb_preview = cv2.resize(frame_rgb, (PREVIEW_W, PREVIEW_H), interpolation=cv2.INTER_AREA)
+            cached_frame_surface = pygame.surfarray.make_surface(np.transpose(frame_rgb_preview, (1, 0, 2)))
+            last_drawn_frame_idx = current_frame_idx
+        screen.blit(cached_frame_surface, (0, 0))
 
         # Draw ROI selection rectangle (scale ROI to preview)
         if start_pos and pygame.mouse.get_pressed()[0]:
