@@ -18,16 +18,16 @@ class ColorCircleDetector:
         self.last_mask = None
         self.last_circles = []
 
-    def detect(self, frame_roi):
-        hsv = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2HSV)
         color = np.uint8([[self.target_color_bgr]])
         hsv_color = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)[0][0]
 
         delta = np.array([int(180 * self.color_tolerance), int(255 * self.color_tolerance), int(255 * self.color_tolerance)])
-        lower = np.maximum(hsv_color - delta, [0, 0, 0])
-        upper = np.minimum(hsv_color + delta, [179, 255, 255])
+        self.lower = np.maximum(hsv_color - delta, [0, 0, 0])
+        self.upper = np.minimum(hsv_color + delta, [179, 255, 255])
 
-        mask = cv2.inRange(hsv, lower, upper)
+    def detect(self, frame_roi):
+        hsv = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower, self.upper)
         self.last_mask = mask
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -93,6 +93,8 @@ def select_roi_and_color(video_path):
     end_pos = None
     roi_rect = None
     selected_color_bgr = None
+    detector = None
+    detector_params = None
     cached_frame_surface = None
     last_drawn_frame_idx = -1
 
@@ -184,13 +186,17 @@ def select_roi_and_color(video_path):
 
         # If color is selected and ROI is set, draw found radius in red and all detected circles in debug mode
         if selected_color_bgr is not None and roi_rect:
-            detector = ColorCircleDetector(
-                selected_color_bgr,
-                color_tolerance=tolerance,
-                target_radius=target_radius,
-                radius_tolerance=radius_tolerance,
-                debug=False
-            )
+            current_params = (selected_color_bgr, tolerance, target_radius, radius_tolerance)
+            if detector is None or detector_params != current_params:
+                detector = ColorCircleDetector(
+                    selected_color_bgr,
+                    color_tolerance=tolerance,
+                    target_radius=target_radius,
+                    radius_tolerance=radius_tolerance,
+                    debug=False
+                )
+                detector_params = current_params
+
             top, bottom, left, right = roi_rect
             roi_frame = frame[top:bottom, left:right]
             detector.detect(roi_frame)
@@ -249,8 +255,9 @@ def process_video(input_path, output_path, debug=True):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    temp_frames = []
+    frames_saved = 0
     frame_buffer = []
     frame_index = 0
 
@@ -277,21 +284,19 @@ def process_video(input_path, output_path, debug=True):
         else:
             if frame_buffer:
                 mid = len(frame_buffer) // 2
-                temp_frames.append(frame_buffer[mid])
+                out.write(frame_buffer[mid])
+                frames_saved += 1
                 frame_buffer = []
         frame_index += 1
 
     if frame_buffer:
         mid = len(frame_buffer) // 2
-        temp_frames.append(frame_buffer[mid])
+        out.write(frame_buffer[mid])
+        frames_saved += 1
 
     cap.release()
-
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    for f in temp_frames:
-        out.write(f)
     out.release()
-    print(f"Frames saved: {len(temp_frames)}")
+    print(f"Frames saved: {frames_saved}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Bambu Timelapse Frame Filter")
