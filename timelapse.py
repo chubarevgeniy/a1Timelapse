@@ -18,16 +18,16 @@ class ColorCircleDetector:
         self.last_mask = None
         self.last_circles = []
 
-    def detect(self, frame_roi):
-        hsv = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2HSV)
         color = np.uint8([[self.target_color_bgr]])
         hsv_color = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)[0][0]
 
         delta = np.array([int(180 * self.color_tolerance), int(255 * self.color_tolerance), int(255 * self.color_tolerance)])
-        lower = np.maximum(hsv_color - delta, [0, 0, 0])
-        upper = np.minimum(hsv_color + delta, [179, 255, 255])
+        self.lower = np.maximum(hsv_color - delta, [0, 0, 0])
+        self.upper = np.minimum(hsv_color + delta, [179, 255, 255])
 
-        mask = cv2.inRange(hsv, lower, upper)
+    def detect(self, frame_roi):
+        hsv = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower, self.upper)
         self.last_mask = mask
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
