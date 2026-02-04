@@ -244,8 +244,9 @@ def process_video(input_path, output_path, debug=True):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    temp_frames = []
+    frames_saved = 0
     frame_buffer = []
     frame_index = 0
 
@@ -272,21 +273,19 @@ def process_video(input_path, output_path, debug=True):
         else:
             if frame_buffer:
                 mid = len(frame_buffer) // 2
-                temp_frames.append(frame_buffer[mid])
+                out.write(frame_buffer[mid])
+                frames_saved += 1
                 frame_buffer = []
         frame_index += 1
 
     if frame_buffer:
         mid = len(frame_buffer) // 2
-        temp_frames.append(frame_buffer[mid])
+        out.write(frame_buffer[mid])
+        frames_saved += 1
 
     cap.release()
-
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    for f in temp_frames:
-        out.write(f)
     out.release()
-    print(f"Frames saved: {len(temp_frames)}")
+    print(f"Frames saved: {frames_saved}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Bambu Timelapse Frame Filter")
