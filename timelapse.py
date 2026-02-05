@@ -75,6 +75,13 @@ def select_roi_and_color(video_path):
         raise ValueError("Failed to read video")
 
     PREVIEW_W, PREVIEW_H = 1280, 720
+
+    def update_preview_surface(frame):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_rgb_preview = cv2.resize(frame_rgb, (PREVIEW_W, PREVIEW_H), interpolation=cv2.INTER_AREA)
+        return pygame.surfarray.make_surface(np.transpose(frame_rgb_preview, (1, 0, 2)))
+
+    preview_surface = update_preview_surface(frame)
     orig_h, orig_w = frame.shape[:2]
     scale_x = PREVIEW_W / orig_w
     scale_y = PREVIEW_H / orig_h
@@ -140,19 +147,19 @@ def select_roi_and_color(video_path):
                         ret, new_frame = get_frame(current_frame_idx)
                         if ret:
                             frame = new_frame
+                            preview_surface = update_preview_surface(frame)
                 elif event.key == pygame.K_LEFT:
                     if current_frame_idx > 0:
                         current_frame_idx -= 1
                         ret, new_frame = get_frame(current_frame_idx)
                         if ret:
                             frame = new_frame
+                            preview_surface = update_preview_surface(frame)
             elif event.type == pygame.MOUSEWHEEL:
                 target_radius = max(1, target_radius + event.y)
 
         # Draw frame (resize for preview)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_rgb_preview = cv2.resize(frame_rgb, (PREVIEW_W, PREVIEW_H), interpolation=cv2.INTER_AREA)
-        screen.blit(pygame.surfarray.make_surface(np.transpose(frame_rgb_preview, (1, 0, 2))), (0, 0))
+        screen.blit(preview_surface, (0, 0))
 
         # Draw ROI selection rectangle (scale ROI to preview)
         if start_pos and pygame.mouse.get_pressed()[0]:
