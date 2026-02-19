@@ -12,33 +12,60 @@ function App() {
   const [opencvLoaded, setOpencvLoaded] = useState(false);
 
   useEffect(() => {
-    // Check if already loaded
-    if (window.cv && window.cv.Mat) {
-      setOpencvLoaded(true);
-      return;
-    }
-
-    const loadOpenCV = () => {
-      const script = document.createElement('script');
-      script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
-      script.async = true;
-      script.onload = () => {
-        // Poll for cv.Mat to ensure WASM/ASM is fully initialized
-        const checkCv = setInterval(() => {
-          if (window.cv && window.cv.Mat) {
-            clearInterval(checkCv);
-            setOpencvLoaded(true);
-            console.log('OpenCV Fully Initialized');
+    const checkOpenCV = async () => {
+      if (window.cv) {
+        // If cv is a promise (or thenable), wait for it to resolve
+        if (window.cv instanceof Promise || (typeof window.cv.then === 'function')) {
+          try {
+            window.cv = await window.cv;
+          } catch (e) {
+            console.error("OpenCV promise rejected", e);
+            return false;
           }
-        }, 100);
-      };
-      script.onerror = () => {
-        console.error('Error loading OpenCV script');
-      };
-      document.body.appendChild(script);
+        }
+
+        // After resolving, check for Mat
+        if (window.cv.Mat) {
+          setOpencvLoaded(true);
+          console.log('OpenCV Fully Initialized');
+          return true;
+        }
+      }
+      return false;
     };
 
-    loadOpenCV();
+    // Initial check in case it's already loaded or loading
+    checkOpenCV().then((loaded) => {
+      if (loaded) return;
+
+      // If not loaded, ensure script is added
+      if (!document.querySelector('script[src="https://docs.opencv.org/4.11.0/opencv.js"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
+        script.async = true;
+        script.onload = () => {
+          // Poll for initialization
+          const interval = setInterval(async () => {
+            const isLoaded = await checkOpenCV();
+            if (isLoaded) {
+              clearInterval(interval);
+            }
+          }, 100);
+        };
+        script.onerror = () => {
+          console.error('Error loading OpenCV script');
+        };
+        document.body.appendChild(script);
+      } else {
+        // Script exists but not ready, start polling
+        const interval = setInterval(async () => {
+          const isLoaded = await checkOpenCV();
+          if (isLoaded) {
+            clearInterval(interval);
+          }
+        }, 100);
+      }
+    });
   }, []);
 
   const handleStartProcessing = async (configuration) => {
