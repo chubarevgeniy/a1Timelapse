@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 function Configurator({ file, onStart, onCancel }) {
   const [roi, setRoi] = useState(null); // [top, bottom, left, right]
@@ -7,38 +7,15 @@ function Configurator({ file, onStart, onCancel }) {
   const [radius, setRadius] = useState(20);
   const [radiusTol, setRadiusTol] = useState(0.2);
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const isDragging = useRef(false);
   const dragStart = useRef(null);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (file) {
-      video.src = URL.createObjectURL(file);
-      video.onloadedmetadata = () => {
-        setVideoLoaded(true);
-        // Draw first frame
-        video.currentTime = 0;
-        // Wait for seek
-        setTimeout(() => {
-          draw(video);
-        }, 500);
-      };
-    }
-    return () => {
-      if (video.src) URL.revokeObjectURL(video.src);
-    }
-  }, [file]);
-
-  useEffect(() => {
-    if (videoLoaded && videoRef.current) {
-      draw(videoRef.current);
-    }
-  }, [roi, radius, videoLoaded]);
-
-  const draw = (video) => {
+  const draw = useCallback((video) => {
     const canvas = canvasRef.current;
     if (!canvas || !video) return;
     const ctx = canvas.getContext('2d');
@@ -78,7 +55,45 @@ function Configurator({ file, onStart, onCancel }) {
     ctx.lineWidth = 2;
     ctx.arc(cx * scaleX, cy * scaleY, radius * scaleX, 0, 2 * Math.PI);
     ctx.stroke();
-  };
+  }, [roi, radius]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (file) {
+      video.src = URL.createObjectURL(file);
+      video.onloadedmetadata = () => {
+        setVideoLoaded(true);
+        setDuration(video.duration);
+        // Draw first frame
+        video.currentTime = 0;
+      };
+
+      video.ontimeupdate = () => {
+        setCurrentTime(video.currentTime);
+      };
+    }
+    return () => {
+      if (video.src) URL.revokeObjectURL(video.src);
+    }
+  }, [file]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleSeeked = () => {
+        draw(video);
+    };
+
+    video.addEventListener('seeked', handleSeeked);
+    return () => video.removeEventListener('seeked', handleSeeked);
+  }, [draw]);
+
+  useEffect(() => {
+    if (videoLoaded && videoRef.current) {
+      draw(videoRef.current);
+    }
+  }, [draw, videoLoaded]);
 
   const getCanvasCoordinates = (e, canvas) => {
     const rect = canvas.getBoundingClientRect();
@@ -131,14 +146,9 @@ function Configurator({ file, onStart, onCancel }) {
   };
 
   const handleMouseUp = (e) => {
-    // For touch end, we might not have changedTouches[0] easily available if needed for 'currentPos'
-    // But we only need currentPos for 'click' detection.
-    // For drag end, we just stop dragging.
-
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Handle touch end separately if needed, but here we try to unify
     let currentPos;
     if (e.changedTouches && e.changedTouches.length > 0) {
         const rect = canvas.getBoundingClientRect();
@@ -155,11 +165,9 @@ function Configurator({ file, onStart, onCancel }) {
     isDragging.current = false;
     const start = dragStart.current;
 
-    // Check distance in canvas pixels
     const dist = Math.sqrt(Math.pow(currentPos.x - start.x, 2) + Math.pow(currentPos.y - start.y, 2));
 
     if (dist < 5) {
-      // It's a click, pick color
       const ctx = canvas.getContext('2d');
       const pixel = ctx.getImageData(currentPos.x, currentPos.y, 1, 1).data;
       setColor([pixel[0], pixel[1], pixel[2]]);
@@ -167,17 +175,33 @@ function Configurator({ file, onStart, onCancel }) {
   };
 
   const handleStart = () => {
-    // Default ROI if null
     const video = videoRef.current;
     const finalRoi = roi || [0, video.videoHeight, 0, video.videoWidth];
 
     onStart({
       roi: finalRoi,
-      color: color, // RGB
+      color: color,
       colorTol,
       radius,
       radiusTol
     });
+  };
+
+  const handleSeek = (e) => {
+    const time = parseFloat(e.target.value);
+    setCurrentTime(time);
+    if (videoRef.current) {
+        videoRef.current.currentTime = time;
+    }
+  };
+
+  const handleStep = (frames) => {
+      if (videoRef.current) {
+          // Approx 30fps
+          const newTime = Math.min(Math.max(0, videoRef.current.currentTime + (frames * 0.033)), duration);
+          videoRef.current.currentTime = newTime;
+          setCurrentTime(newTime);
+      }
   };
 
   return (
@@ -202,6 +226,34 @@ function Configurator({ file, onStart, onCancel }) {
                 />
                 {!videoLoaded && <p style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '5px'}}>LOADING SOURCE...</p>}
             </div>
+
+            {/* Video Controls */}
+            {videoLoaded && (
+                <div style={{marginTop: '10px', padding: '10px', background: '#f0f0f0', border: '2px solid black'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px'}}>
+                        <label style={{fontSize: '0.8rem', fontWeight: 'bold'}}>FRAME SELECTION</label>
+                        <span style={{fontSize: '0.8rem', fontFamily: 'monospace'}}>{currentTime.toFixed(2)}s / {duration.toFixed(2)}s</span>
+                    </div>
+                    <input
+                        type="range"
+                        min="0"
+                        max={duration}
+                        step="0.01"
+                        value={currentTime}
+                        onChange={handleSeek}
+                        style={{width: '100%', marginBottom: '10px'}}
+                    />
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
+                        <button onClick={() => handleStep(-1)} className="btn btn-secondary" style={{padding: '5px', fontSize: '0.8rem'}}>
+                            &lt; PREV FRAME
+                        </button>
+                        <button onClick={() => handleStep(1)} className="btn btn-secondary" style={{padding: '5px', fontSize: '0.8rem'}}>
+                            NEXT FRAME &gt;
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <p style={{fontSize: '0.8rem', marginTop: '10px', opacity: 0.7}}>CLICK TO PICK COLOR • DRAG TO SELECT ROI</p>
             {roi && <button onClick={() => setRoi(null)} className="btn btn-secondary" style={{marginTop: '5px', padding: '5px', fontSize: '0.8rem'}}>RESET ROI (FULL SCREEN)</button>}
         </div>
