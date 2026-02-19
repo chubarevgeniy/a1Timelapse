@@ -9,14 +9,7 @@ function VideoUploader({ onFileSelect }) {
   };
 
   return (
-    <div style={{
-      border: '2px dashed #ccc',
-      padding: 50,
-      textAlign: 'center',
-      borderRadius: 10,
-      background: '#f9f9f9',
-      cursor: 'pointer'
-    }}>
+    <div className="uploader">
       <input
         type="file"
         accept="video/*"
@@ -25,10 +18,13 @@ function VideoUploader({ onFileSelect }) {
         id="file-upload"
       />
       <label htmlFor="file-upload" style={{cursor: 'pointer', display: 'block'}}>
-        <span style={{fontSize: 50}}>📹</span>
+        <span className="uploader-icon">📹</span>
         <br/>
-        <h3>Select Video File</h3>
-        <p>Supports MP4, WebM, etc.</p>
+        <h3>INPUT SOURCE</h3>
+        <p style={{textTransform: 'uppercase', fontSize: '0.8rem'}}>Supported Formats: MP4, WEBM</p>
+        <div style={{marginTop: '20px', border: '1px solid black', padding: '10px', display: 'inline-block'}}>
+            SELECT FILE
+        </div>
       </label>
     </div>
   );
