@@ -23,8 +23,14 @@ function App() {
       script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
       script.async = true;
       script.onload = () => {
-        setOpencvLoaded(true);
-        console.log('OpenCV Loaded');
+        // Poll for cv.Mat to ensure WASM/ASM is fully initialized
+        const checkCv = setInterval(() => {
+          if (window.cv && window.cv.Mat) {
+            clearInterval(checkCv);
+            setOpencvLoaded(true);
+            console.log('OpenCV Fully Initialized');
+          }
+        }, 100);
       };
       script.onerror = () => {
         console.error('Error loading OpenCV script');
