@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 uploads/
 outputs/
+web/node_modules/
+web/dist/
