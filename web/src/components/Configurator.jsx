@@ -10,6 +10,8 @@ function Configurator({ file, onStart, onCancel }) {
 
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
+  const isDragging = useRef(false);
+  const dragStart = useRef(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -30,6 +32,12 @@ function Configurator({ file, onStart, onCancel }) {
     }
   }, [file]);
 
+  useEffect(() => {
+    if (videoLoaded && videoRef.current) {
+      draw(videoRef.current);
+    }
+  }, [roi, radius, videoLoaded]);
+
   const draw = (video) => {
     const canvas = canvasRef.current;
     if (!canvas || !video) return;
@@ -44,25 +52,92 @@ function Configurator({ file, onStart, onCancel }) {
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+    const scaleX = canvas.width / w;
+    const scaleY = canvas.height / h;
+
     if (roi) {
       const [top, bottom, left, right] = roi;
-      ctx.strokeStyle = 'red'; // Keep red for high visibility against video
+      ctx.strokeStyle = 'red';
       ctx.lineWidth = 2;
-      ctx.strokeRect(left * scale, top * scale, (right - left) * scale, (bottom - top) * scale);
+      ctx.strokeRect(left * scaleX, top * scaleY, (right - left) * scaleX, (bottom - top) * scaleY);
     }
+
+    // Draw radius preview
+    let cx, cy;
+    if (roi) {
+        const [top, bottom, left, right] = roi;
+        cx = (left + right) / 2;
+        cy = (top + bottom) / 2;
+    } else {
+        cx = w / 2;
+        cy = h / 2;
+    }
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'cyan';
+    ctx.lineWidth = 2;
+    ctx.arc(cx * scaleX, cy * scaleY, radius * scaleX, 0, 2 * Math.PI);
+    ctx.stroke();
   };
 
-  const handleCanvasClick = (e) => {
+  const getCanvasCoordinates = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  };
+
+  const handleMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    isDragging.current = true;
+    dragStart.current = getCanvasCoordinates(e, canvas);
+  };
 
-    // Get pixel color
-    const ctx = canvas.getContext('2d');
-    const pixel = ctx.getImageData(x, y, 1, 1).data;
-    setColor([pixel[0], pixel[1], pixel[2]]);
+  const handleMouseMove = (e) => {
+    if (!isDragging.current) return;
+    const canvas = canvasRef.current;
+    const currentPos = getCanvasCoordinates(e, canvas);
+    const start = dragStart.current;
+
+    // Convert canvas coords to video coords
+    const video = videoRef.current;
+    const scaleX = video.videoWidth / canvas.width;
+    const scaleY = video.videoHeight / canvas.height;
+
+    // Canvas coords
+    const cTop = Math.min(start.y, currentPos.y);
+    const cBottom = Math.max(start.y, currentPos.y);
+    const cLeft = Math.min(start.x, currentPos.x);
+    const cRight = Math.max(start.x, currentPos.x);
+
+    // Video coords
+    setRoi([
+        cTop * scaleY,
+        cBottom * scaleY,
+        cLeft * scaleX,
+        cRight * scaleX
+    ]);
+  };
+
+  const handleMouseUp = (e) => {
+    isDragging.current = false;
+    const canvas = canvasRef.current;
+    const currentPos = getCanvasCoordinates(e, canvas);
+    const start = dragStart.current;
+
+    // Check distance in canvas pixels
+    const dist = Math.sqrt(Math.pow(currentPos.x - start.x, 2) + Math.pow(currentPos.y - start.y, 2));
+
+    if (dist < 5) {
+      // It's a click, pick color
+      const ctx = canvas.getContext('2d');
+      const pixel = ctx.getImageData(currentPos.x, currentPos.y, 1, 1).data;
+      setColor([pixel[0], pixel[1], pixel[2]]);
+    }
   };
 
   const handleStart = () => {
@@ -90,12 +165,16 @@ function Configurator({ file, onStart, onCancel }) {
             <div className="canvas-wrapper">
                 <canvas
                 ref={canvasRef}
-                onClick={handleCanvasClick}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={(e) => { if(isDragging.current) handleMouseUp(e); }}
                 className="canvas-preview"
                 />
                 {!videoLoaded && <p style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '5px'}}>LOADING SOURCE...</p>}
             </div>
-            <p style={{fontSize: '0.8rem', marginTop: '10px', opacity: 0.7}}>CLICK IMAGE TO PICK COLOR TARGET</p>
+            <p style={{fontSize: '0.8rem', marginTop: '10px', opacity: 0.7}}>CLICK TO PICK COLOR • DRAG TO SELECT ROI</p>
+            {roi && <button onClick={() => setRoi(null)} className="btn btn-secondary" style={{marginTop: '5px', padding: '5px', fontSize: '0.8rem'}}>RESET ROI (FULL SCREEN)</button>}
         </div>
 
         {/* Right Column: Controls */}

@@ -10,7 +10,6 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState(null);
   const [opencvLoaded, setOpencvLoaded] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
 
   useEffect(() => {
     // Check if already loaded
@@ -19,54 +18,18 @@ function App() {
       return;
     }
 
-    const loadOpenCV = async () => {
-      try {
-        const response = await fetch('https://docs.opencv.org/4.11.0/opencv.js');
-        if (!response.ok) throw new Error('Failed to load OpenCV');
-
-        const contentLength = response.headers.get('Content-Length');
-        const total = contentLength ? parseInt(contentLength, 10) : 0;
-        let loaded = 0;
-
-        const reader = response.body.getReader();
-        const chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          chunks.push(value);
-          loaded += value.length;
-
-          if (total) {
-            setLoadingProgress(Math.round((loaded / total) * 100));
-          }
-        }
-
-        const blob = new Blob(chunks, { type: 'text/javascript' });
-        const url = URL.createObjectURL(blob);
-
-        const script = document.createElement('script');
-        script.src = url;
-        script.onload = () => {
-          setOpencvLoaded(true);
-          URL.revokeObjectURL(url);
-          console.log('OpenCV Loaded via Blob');
-        };
-        script.onerror = () => {
-            console.error('Error loading OpenCV script');
-        };
-        document.body.appendChild(script);
-
-      } catch (err) {
-        console.error('Error fetching OpenCV:', err);
-        // Fallback to normal script tag if fetch fails (e.g. CORS)
-        const script = document.createElement('script');
-        script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
-        script.async = true;
-        script.onload = () => setOpencvLoaded(true);
-        document.body.appendChild(script);
-      }
+    const loadOpenCV = () => {
+      const script = document.createElement('script');
+      script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
+      script.async = true;
+      script.onload = () => {
+        setOpencvLoaded(true);
+        console.log('OpenCV Loaded');
+      };
+      script.onerror = () => {
+        console.error('Error loading OpenCV script');
+      };
+      document.body.appendChild(script);
     };
 
     loadOpenCV();
@@ -95,9 +58,9 @@ function App() {
       <div className="loading-screen">
         <h2 style={{border: 'none'}}>INITIALIZING SYSTEM</h2>
         <div className="progress-track" style={{width: '300px', border: '2px solid black'}}>
-            <div className="progress-fill" style={{width: `${loadingProgress}%`, background: 'black'}}></div>
+            <div className="progress-fill" style={{width: '100%', background: 'black', animation: 'indeterminate 2s infinite linear'}}></div>
         </div>
-        <p style={{marginTop: '10px', fontWeight: 'bold'}}>LOADING OPENCV... {loadingProgress}%</p>
+        <p style={{marginTop: '10px', fontWeight: 'bold'}}>LOADING OPENCV...</p>
       </div>
     );
   }
