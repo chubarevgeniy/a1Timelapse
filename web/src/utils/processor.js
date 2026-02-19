@@ -43,11 +43,14 @@ export const processVideo = async (file, config, onProgress) => {
 
       const videoEncoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => console.error(e),
+        error: (e) => {
+            console.error(e);
+            reject(e);
+        },
       });
 
       videoEncoder.configure({
-        codec: 'avc1.42001f',
+        codec: 'avc1.4d002a',
         width: videoWidth,
         height: videoHeight,
         bitrate: 2_000_000,
@@ -115,88 +118,100 @@ export const processVideo = async (file, config, onProgress) => {
       const step = 1/fps;
 
       const processFrame = async () => {
-        if (currentTime >= duration) {
-            await videoEncoder.flush();
-            muxer.finalize();
-
-            if (lowMat) lowMat.delete();
-            if (highMat) highMat.delete();
-            if (roiMask) roiMask.delete();
-            if (contours) contours.delete();
-            if (hierarchy) hierarchy.delete();
-
-            resolve(muxer.target.buffer);
-            return;
-        }
-
-        video.currentTime = currentTime;
-
-        await new Promise(r => {
-            const handler = () => {
-                video.removeEventListener('seeked', handler);
-                r();
-            };
-            video.addEventListener('seeked', handler);
-            if (video.readyState >= 3) {
-                 video.removeEventListener('seeked', handler);
-                 r();
+        try {
+            if (videoEncoder.state === "closed") {
+                reject(new Error("VideoEncoder closed unexpectedly"));
+                return;
             }
-        });
 
-        ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+            if (currentTime >= duration) {
+                await videoEncoder.flush();
+                muxer.finalize();
 
-        let found = false;
+                if (lowMat) lowMat.delete();
+                if (highMat) highMat.delete();
+                if (roiMask) roiMask.delete();
+                if (contours) contours.delete();
+                if (hierarchy) hierarchy.delete();
 
-        if (roiW > 0 && roiH > 0) {
-           const imgData = ctx.getImageData(roiLeft, roiTop, roiW, roiH);
-           const roiMat = cv.matFromImageData(imgData); // RGBA
+                resolve(muxer.target.buffer);
+                return;
+            }
 
-           const roiRgb = new cv.Mat();
-           cv.cvtColor(roiMat, roiRgb, cv.COLOR_RGBA2RGB); // RGB
+            video.currentTime = currentTime;
 
-           const roiHsv = new cv.Mat();
-           cv.cvtColor(roiRgb, roiHsv, cv.COLOR_RGB2HSV); // HSV
+            await new Promise(r => {
+                const handler = () => {
+                    video.removeEventListener('seeked', handler);
+                    r();
+                };
+                video.addEventListener('seeked', handler);
+                if (video.readyState >= 3) {
+                    video.removeEventListener('seeked', handler);
+                    r();
+                }
+            });
 
-           cv.inRange(roiHsv, lowMat, highMat, roiMask);
+            ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-           cv.findContours(roiMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            let found = false;
 
-           for (let i = 0; i < contours.size(); ++i) {
-               const cnt = contours.get(i);
-               const circle = cv.minEnclosingCircle(cnt);
+            if (roiW > 0 && roiH > 0) {
+                const imgData = ctx.getImageData(roiLeft, roiTop, roiW, roiH);
+                const roiMat = cv.matFromImageData(imgData); // RGBA
 
-               if (circle.radius < 1) { cnt.delete(); continue; }
+                const roiRgb = new cv.Mat();
+                cv.cvtColor(roiMat, roiRgb, cv.COLOR_RGBA2RGB); // RGB
 
-               const area = cv.contourArea(cnt);
-               const circleArea = Math.PI * circle.radius * circle.radius;
-               const circularity = circleArea > 0 ? area / circleArea : 0;
+                const roiHsv = new cv.Mat();
+                cv.cvtColor(roiRgb, roiHsv, cv.COLOR_RGB2HSV); // HSV
 
-               if (Math.abs(circle.radius - config.radius) <= config.radius * config.radiusTol && circularity > 0.2) {
-                   found = true;
-               }
-               cnt.delete();
-               if (found) break;
-           }
+                cv.inRange(roiHsv, lowMat, highMat, roiMask);
 
-           roiMat.delete(); roiRgb.delete(); roiHsv.delete();
+                cv.findContours(roiMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                for (let i = 0; i < contours.size(); ++i) {
+                    const cnt = contours.get(i);
+                    const circle = cv.minEnclosingCircle(cnt);
+
+                    if (circle.radius < 1) { cnt.delete(); continue; }
+
+                    const area = cv.contourArea(cnt);
+                    const circleArea = Math.PI * circle.radius * circle.radius;
+                    const circularity = circleArea > 0 ? area / circleArea : 0;
+
+                    if (Math.abs(circle.radius - config.radius) <= config.radius * config.radiusTol && circularity > 0.2) {
+                        found = true;
+                    }
+                    cnt.delete();
+                    if (found) break;
+                }
+
+                roiMat.delete(); roiRgb.delete(); roiHsv.delete();
+            }
+
+            if (found) {
+                const bitmap = await createImageBitmap(canvas);
+                const timestamp = outputFrameCount * (1000000 / 30);
+                const frame = new VideoFrame(bitmap, { timestamp: timestamp, duration: 1000000/30 });
+
+                try {
+                    videoEncoder.encode(frame, { keyFrame: outputFrameCount % 30 === 0 });
+                } finally {
+                    frame.close();
+                }
+                outputFrameCount++;
+            }
+
+            if (onProgress) {
+                onProgress(Math.min(100, Math.round((currentTime / duration) * 100)));
+            }
+
+            currentTime += step;
+            setTimeout(processFrame, 0);
+        } catch (e) {
+            reject(e);
         }
-
-        if (found) {
-            const bitmap = await createImageBitmap(canvas);
-            const timestamp = outputFrameCount * (1000000 / 30);
-            const frame = new VideoFrame(bitmap, { timestamp: timestamp, duration: 1000000/30 });
-
-            videoEncoder.encode(frame, { keyFrame: outputFrameCount % 30 === 0 });
-            frame.close();
-            outputFrameCount++;
-        }
-
-        if (onProgress) {
-            onProgress(Math.min(100, Math.round((currentTime / duration) * 100)));
-        }
-
-        currentTime += step;
-        setTimeout(processFrame, 0);
       };
 
       processFrame();
