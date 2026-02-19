@@ -10,6 +10,10 @@ function Configurator({ file, onStart, onCancel }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
 
+  const [isColorPicking, setIsColorPicking] = useState(false);
+  const [tempColor, setTempColor] = useState(null);
+  const [magnifier, setMagnifier] = useState({ visible: false, x: 0, y: 0, content: null });
+
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const isDragging = useRef(false);
@@ -109,69 +113,135 @@ function Configurator({ file, onStart, onCancel }) {
     };
   };
 
-  const handleMouseDown = (e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    isDragging.current = true;
-    dragStart.current = getCanvasCoordinates(e, canvas);
+  const getClampedCoordinates = (e, canvas) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const rawX = (clientX - rect.left) * scaleX;
+      const rawY = (clientY - rect.top) * scaleY;
+
+      return {
+          x: Math.min(Math.max(0, rawX), canvas.width),
+          y: Math.min(Math.max(0, rawY), canvas.height),
+          clientX,
+          clientY
+      };
   };
 
-  const handleMouseMove = (e) => {
-    if (!isDragging.current) return;
-    // Prevent scrolling on touch devices while dragging
-    if (e.preventDefault) e.preventDefault();
-
-    const canvas = canvasRef.current;
-    const currentPos = getCanvasCoordinates(e, canvas);
-    const start = dragStart.current;
-
-    // Convert canvas coords to video coords
-    const video = videoRef.current;
-    const scaleX = video.videoWidth / canvas.width;
-    const scaleY = video.videoHeight / canvas.height;
-
-    // Canvas coords
-    const cTop = Math.min(start.y, currentPos.y);
-    const cBottom = Math.max(start.y, currentPos.y);
-    const cLeft = Math.min(start.x, currentPos.x);
-    const cRight = Math.max(start.x, currentPos.x);
-
-    // Video coords
-    setRoi([
-        cTop * scaleY,
-        cBottom * scaleY,
-        cLeft * scaleX,
-        cRight * scaleX
-    ]);
-  };
-
-  const handleMouseUp = (e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    let currentPos;
-    if (e.changedTouches && e.changedTouches.length > 0) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        currentPos = {
-            x: (e.changedTouches[0].clientX - rect.left) * scaleX,
-            y: (e.changedTouches[0].clientY - rect.top) * scaleY
-        };
-    } else {
-        currentPos = getCanvasCoordinates(e, canvas);
-    }
-
-    isDragging.current = false;
-    const start = dragStart.current;
-
-    const dist = Math.sqrt(Math.pow(currentPos.x - start.x, 2) + Math.pow(currentPos.y - start.y, 2));
-
-    if (dist < 5) {
+  const updateMagnifier = (x, y, canvas) => {
       const ctx = canvas.getContext('2d');
-      const pixel = ctx.getImageData(currentPos.x, currentPos.y, 1, 1).data;
-      setColor([pixel[0], pixel[1], pixel[2]]);
+      // Get 10x10 area around cursor
+      const sx = Math.max(0, Math.min(canvas.width - 10, x - 5));
+      const sy = Math.max(0, Math.min(canvas.height - 10, y - 5));
+
+      try {
+          const pixelData = ctx.getImageData(sx, sy, 10, 10);
+
+          // Create a temp canvas to convert to data URL
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = 10;
+          tempCanvas.height = 10;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.putImageData(pixelData, 0, 0);
+
+          setMagnifier(prev => ({
+              ...prev,
+              content: tempCanvas.toDataURL()
+          }));
+      } catch (e) {
+          console.error("Failed to update magnifier", e);
+      }
+  };
+
+  const handleGlobalMove = useCallback((e) => {
+    if (!isDragging.current || !canvasRef.current) return;
+    // Prevent scrolling on touch devices
+    if (e.cancelable && e.preventDefault) e.preventDefault();
+
+    const canvas = canvasRef.current;
+    const coords = getClampedCoordinates(e, canvas);
+    const { x, y, clientX, clientY } = coords;
+
+    // Update Magnifier
+    updateMagnifier(x, y, canvas);
+    setMagnifier(prev => ({ ...prev, visible: true, x: clientX, y: clientY }));
+
+    if (isColorPicking) {
+         const ctx = canvas.getContext('2d');
+         // Get color at exact pixel
+         try {
+             // Use raw coords or clamped? Clamped ensures we are in canvas.
+             const p = ctx.getImageData(x, y, 1, 1).data;
+             setTempColor([p[0], p[1], p[2]]);
+         } catch(err) {}
+    } else {
+        // Update ROI
+         const start = dragStart.current;
+         if (!start) return;
+
+         // Convert current canvas coords to video coords
+         const video = videoRef.current;
+         const scaleX = video.videoWidth / canvas.width;
+         const scaleY = video.videoHeight / canvas.height;
+
+         const cTop = Math.min(start.y, y);
+         const cBottom = Math.max(start.y, y);
+         const cLeft = Math.min(start.x, x);
+         const cRight = Math.max(start.x, x);
+
+         setRoi([
+             cTop * scaleY,
+             cBottom * scaleY,
+             cLeft * scaleX,
+             cRight * scaleX
+         ]);
     }
+  }, [isColorPicking]); // getClampedCoordinates and updateMagnifier are constant if defined outside or refs?
+  // Actually getClampedCoordinates and updateMagnifier are defined in the component scope.
+  // If they rely on props/state they change. They don't seem to rely on state.
+  // BUT I did not wrapping them in useCallback.
+  // It's safer to include them in dependency array or make them stable.
+  // Since they are just helper functions defined in render, they change every render.
+  // This causes handleGlobalMove to change every render, re-attaching listeners.
+  // It is fine but less efficient.
+
+  const handleGlobalUp = useCallback(() => {
+    isDragging.current = false;
+    setMagnifier(prev => ({ ...prev, visible: false }));
+
+    window.removeEventListener('mousemove', handleGlobalMove);
+    window.removeEventListener('mouseup', handleGlobalUp);
+    window.removeEventListener('touchmove', handleGlobalMove);
+    window.removeEventListener('touchend', handleGlobalUp);
+  }, [handleGlobalMove]);
+
+  const handlePointerDown = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Stop event defaults if possible
+    // if (e.cancelable && e.preventDefault) e.preventDefault();
+    // ^ Don't prevent default on start always, might block click.
+    // But for canvas drawing usually we do.
+
+    isDragging.current = true;
+
+    // We use getClampedCoordinates but since we started IN canvas, it matches.
+    const coords = getClampedCoordinates(e, canvas);
+    dragStart.current = { x: coords.x, y: coords.y };
+
+    // Initial Magnifier
+    updateMagnifier(coords.x, coords.y, canvas);
+    setMagnifier({ visible: true, x: coords.clientX, y: coords.clientY, content: null });
+
+    // Attach global listeners
+    window.addEventListener('mousemove', handleGlobalMove, { passive: false });
+    window.addEventListener('mouseup', handleGlobalUp);
+    window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+    window.addEventListener('touchend', handleGlobalUp);
   };
 
   const handleStart = () => {
@@ -215,14 +285,9 @@ function Configurator({ file, onStart, onCancel }) {
             <div className="canvas-wrapper">
                 <canvas
                 ref={canvasRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={(e) => { if(isDragging.current) handleMouseUp(e); }}
-                onTouchStart={handleMouseDown}
-                onTouchMove={handleMouseMove}
-                onTouchEnd={handleMouseUp}
+                onPointerDown={handlePointerDown}
                 className="canvas-preview"
+                style={{ touchAction: 'none' }}
                 />
                 {!videoLoaded && <p style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '5px'}}>LOADING SOURCE...</p>}
             </div>
@@ -262,13 +327,60 @@ function Configurator({ file, onStart, onCancel }) {
         <div className="controls-group">
             <div className="form-group">
                 <label>Target Color</label>
-                <div className="color-picker-wrapper">
-                    <div
-                        className="color-preview"
-                        style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }}
-                    ></div>
-                    <span style={{fontFamily: 'monospace'}}>RGB({color[0]}, {color[1]}, {color[2]})</span>
-                </div>
+                {isColorPicking ? (
+                    <div style={{border: '2px solid black', padding: '10px', background: '#fff'}}>
+                        <p style={{margin: '0 0 10px 0', fontSize: '0.8rem', fontWeight: 'bold'}}>DRAG ON VIDEO TO PICK</p>
+                        <div style={{display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px'}}>
+                            <div
+                                className="color-preview"
+                                style={{
+                                    background: tempColor ? `rgb(${tempColor[0]}, ${tempColor[1]}, ${tempColor[2]})` : `rgb(${color[0]}, ${color[1]}, ${color[2]})`
+                                }}
+                            ></div>
+                            <span style={{fontFamily: 'monospace'}}>
+                                {tempColor ? `RGB(${tempColor.join(',')})` : '...'}
+                            </span>
+                        </div>
+                        <div style={{display: 'flex', gap: '5px'}}>
+                            <button
+                                className="btn btn-success"
+                                onClick={() => {
+                                    if(tempColor) setColor(tempColor);
+                                    setIsColorPicking(false);
+                                    setTempColor(null);
+                                }}
+                            >
+                                CONFIRM
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                    setIsColorPicking(false);
+                                    setTempColor(null);
+                                }}
+                            >
+                                CANCEL
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="color-picker-wrapper">
+                        <div
+                            className="color-preview"
+                            style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})`, cursor: 'pointer' }}
+                            onClick={() => setIsColorPicking(true)}
+                            title="Click to pick from video"
+                        ></div>
+                        <span style={{fontFamily: 'monospace'}}>RGB({color[0]}, {color[1]}, {color[2]})</span>
+                        <button
+                            className="btn btn-secondary"
+                            style={{width: 'auto', padding: '5px 10px', marginLeft: 'auto', fontSize: '0.7rem'}}
+                            onClick={() => setIsColorPicking(true)}
+                        >
+                            PICK
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="form-group">
@@ -321,6 +433,19 @@ function Configurator({ file, onStart, onCancel }) {
             </div>
         </div>
       </div>
+
+      {magnifier.visible && (
+        <div
+            className="magnifier"
+            style={{
+                left: magnifier.x,
+                top: magnifier.y
+            }}
+        >
+            {magnifier.content && <img src={magnifier.content} alt="" style={{width: '100%', height: '100%', imageRendering: 'pixelated'}} />}
+            <div className="magnifier-crosshair"></div>
+        </div>
+      )}
     </div>
   );
 }
