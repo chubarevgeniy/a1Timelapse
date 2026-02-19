@@ -84,9 +84,13 @@ function Configurator({ file, onStart, onCancel }) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
+    // Handle both mouse and touch events
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
     };
   };
 
@@ -99,6 +103,9 @@ function Configurator({ file, onStart, onCancel }) {
 
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
+    // Prevent scrolling on touch devices while dragging
+    if (e.preventDefault) e.preventDefault();
+
     const canvas = canvasRef.current;
     const currentPos = getCanvasCoordinates(e, canvas);
     const start = dragStart.current;
@@ -124,9 +131,28 @@ function Configurator({ file, onStart, onCancel }) {
   };
 
   const handleMouseUp = (e) => {
-    isDragging.current = false;
+    // For touch end, we might not have changedTouches[0] easily available if needed for 'currentPos'
+    // But we only need currentPos for 'click' detection.
+    // For drag end, we just stop dragging.
+
     const canvas = canvasRef.current;
-    const currentPos = getCanvasCoordinates(e, canvas);
+    if (!canvas) return;
+
+    // Handle touch end separately if needed, but here we try to unify
+    let currentPos;
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        currentPos = {
+            x: (e.changedTouches[0].clientX - rect.left) * scaleX,
+            y: (e.changedTouches[0].clientY - rect.top) * scaleY
+        };
+    } else {
+        currentPos = getCanvasCoordinates(e, canvas);
+    }
+
+    isDragging.current = false;
     const start = dragStart.current;
 
     // Check distance in canvas pixels
@@ -169,6 +195,9 @@ function Configurator({ file, onStart, onCancel }) {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={(e) => { if(isDragging.current) handleMouseUp(e); }}
+                onTouchStart={handleMouseDown}
+                onTouchMove={handleMouseMove}
+                onTouchEnd={handleMouseUp}
                 className="canvas-preview"
                 />
                 {!videoLoaded && <p style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '5px'}}>LOADING SOURCE...</p>}
