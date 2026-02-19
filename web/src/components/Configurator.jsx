@@ -46,7 +46,7 @@ function Configurator({ file, onStart, onCancel }) {
 
     if (roi) {
       const [top, bottom, left, right] = roi;
-      ctx.strokeStyle = 'red';
+      ctx.strokeStyle = 'red'; // Keep red for high visibility against video
       ctx.lineWidth = 2;
       ctx.strokeRect(left * scale, top * scale, (right - left) * scale, (bottom - top) * scale);
     }
@@ -82,45 +82,83 @@ function Configurator({ file, onStart, onCancel }) {
   return (
     <div>
       <video ref={videoRef} style={{display: 'none'}} muted playsInline />
-      <h3>Configure</h3>
-      <div style={{position: 'relative', width: 'fit-content', margin: '0 auto'}}>
-        <canvas
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          style={{border: '1px solid #ccc', cursor: 'crosshair', maxWidth: '100%'}}
-        />
-        {!videoLoaded && <p>Loading video...</p>}
-      </div>
+      <h3>SYSTEM CONFIGURATION</h3>
 
-      <div style={{marginTop: 20}}>
-        <div style={{marginBottom: 10}}>
-          <label>Selected Color:</label>
-          <div style={{
-            display: 'inline-block', width: 30, height: 30,
-            background: `rgb(${color[0]}, ${color[1]}, ${color[2]})`,
-            verticalAlign: 'middle', marginLeft: 10, border: '1px solid #ccc'
-          }}></div>
-          <span style={{marginLeft: 10}}>Click image to pick</span>
+      <div className="configurator-container">
+        {/* Left Column: Preview */}
+        <div>
+            <div className="canvas-wrapper">
+                <canvas
+                ref={canvasRef}
+                onClick={handleCanvasClick}
+                className="canvas-preview"
+                />
+                {!videoLoaded && <p style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '5px'}}>LOADING SOURCE...</p>}
+            </div>
+            <p style={{fontSize: '0.8rem', marginTop: '10px', opacity: 0.7}}>CLICK IMAGE TO PICK COLOR TARGET</p>
         </div>
 
-        <div style={{marginBottom: 10}}>
-          <label>Color Tolerance: {colorTol}</label>
-          <input type="range" min="0.01" max="0.5" step="0.01" value={colorTol} onChange={e => setColorTol(parseFloat(e.target.value))} style={{width: '100%'}}/>
-        </div>
+        {/* Right Column: Controls */}
+        <div className="controls-group">
+            <div className="form-group">
+                <label>Target Color</label>
+                <div className="color-picker-wrapper">
+                    <div
+                        className="color-preview"
+                        style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }}
+                    ></div>
+                    <span style={{fontFamily: 'monospace'}}>RGB({color[0]}, {color[1]}, {color[2]})</span>
+                </div>
+            </div>
 
-        <div style={{marginBottom: 10}}>
-          <label>Target Radius: {radius}</label>
-          <input type="range" min="5" max="100" value={radius} onChange={e => setRadius(parseInt(e.target.value))} style={{width: '100%'}}/>
-        </div>
+            <div className="form-group">
+                <label>
+                    Color Tolerance
+                    <span>{Math.round(colorTol * 100)}%</span>
+                </label>
+                <input
+                    type="range"
+                    min="0.01"
+                    max="0.5"
+                    step="0.01"
+                    value={colorTol}
+                    onChange={e => setColorTol(parseFloat(e.target.value))}
+                />
+            </div>
 
-        <div style={{marginBottom: 10}}>
-          <label>Radius Tolerance: {radiusTol}</label>
-          <input type="range" min="0.01" max="1.0" step="0.01" value={radiusTol} onChange={e => setRadiusTol(parseFloat(e.target.value))} style={{width: '100%'}}/>
-        </div>
+            <div className="form-group">
+                <label>
+                    Target Radius
+                    <span>{radius}px</span>
+                </label>
+                <input
+                    type="range"
+                    min="5"
+                    max="100"
+                    value={radius}
+                    onChange={e => setRadius(parseInt(e.target.value))}
+                />
+            </div>
 
-        <div style={{marginTop: 20}}>
-          <button onClick={handleStart} style={{width: '100%', padding: 15, background: '#007bff', color: 'white', border: 'none', borderRadius: 5, fontSize: 18}}>Start Processing</button>
-          <button onClick={onCancel} style={{width: '100%', padding: 10, marginTop: 10, background: '#ccc', border: 'none', borderRadius: 5}}>Cancel</button>
+            <div className="form-group">
+                <label>
+                    Radius Tolerance
+                    <span>{Math.round(radiusTol * 100)}%</span>
+                </label>
+                <input
+                    type="range"
+                    min="0.01"
+                    max="1.0"
+                    step="0.01"
+                    value={radiusTol}
+                    onChange={e => setRadiusTol(parseFloat(e.target.value))}
+                />
+            </div>
+
+            <div style={{marginTop: 'auto', paddingTop: '20px', borderTop: '2px solid black'}}>
+                <button onClick={handleStart} className="btn btn-primary">INITIALIZE PROCESS</button>
+                <button onClick={onCancel} className="btn btn-secondary mt-3">CANCEL</button>
+            </div>
         </div>
       </div>
     </div>
