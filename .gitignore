@@ -2,3 +2,5 @@ venv/
 videos/*
 __pycache__/
 *.pyc
+uploads/
+outputs/
