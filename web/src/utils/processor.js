@@ -114,7 +114,8 @@ export const processVideo = async (file, config, onProgress) => {
 
       let currentTime = 0;
       let outputFrameCount = 0;
-      const fps = 15; // Analysis FPS
+      // Use 60 FPS for analysis to emulate frame-by-frame processing and ensure we don't skip frames in standard videos
+      const fps = 60;
       const step = 1/fps;
       let frameBuffer = [];
 
