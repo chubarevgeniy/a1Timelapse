@@ -4,6 +4,8 @@ A client-side web application designed to smooth out timelapses from 3D printers
 
 **[🚀 Open the Web App](https://chubarevgeniy.github.io/a1Timelapse/)**
 
+**[🚀 Boost on makerworld](https://makerworld.com/models/2447065)**
+
 ## Features
 
 - **100% Client-Side:** No video upload required. Processing happens entirely in your browser using OpenCV.js and WebCodecs.
