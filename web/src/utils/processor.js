@@ -116,6 +116,7 @@ export const processVideo = async (file, config, onProgress) => {
       let outputFrameCount = 0;
       const fps = 15; // Analysis FPS
       const step = 1/fps;
+      let frameBuffer = [];
 
       const processFrame = async () => {
         try {
@@ -125,6 +126,23 @@ export const processVideo = async (file, config, onProgress) => {
             }
 
             if (currentTime >= duration) {
+                if (frameBuffer.length > 0) {
+                    const mid = Math.floor(frameBuffer.length / 2);
+                    const bitmap = frameBuffer[mid];
+                    const timestamp = outputFrameCount * (1000000 / 30);
+                    const frame = new VideoFrame(bitmap, { timestamp: timestamp, duration: 1000000/30 });
+                    try {
+                        videoEncoder.encode(frame, { keyFrame: outputFrameCount % 30 === 0 });
+                    } finally {
+                        frame.close();
+                    }
+                    outputFrameCount++;
+                    for (const bmp of frameBuffer) {
+                        bmp.close();
+                    }
+                    frameBuffer = [];
+                }
+
                 await videoEncoder.flush();
                 muxer.finalize();
 
@@ -192,15 +210,24 @@ export const processVideo = async (file, config, onProgress) => {
 
             if (found) {
                 const bitmap = await createImageBitmap(canvas);
-                const timestamp = outputFrameCount * (1000000 / 30);
-                const frame = new VideoFrame(bitmap, { timestamp: timestamp, duration: 1000000/30 });
-
-                try {
-                    videoEncoder.encode(frame, { keyFrame: outputFrameCount % 30 === 0 });
-                } finally {
-                    frame.close();
+                frameBuffer.push(bitmap);
+            } else {
+                if (frameBuffer.length > 0) {
+                    const mid = Math.floor(frameBuffer.length / 2);
+                    const bitmap = frameBuffer[mid];
+                    const timestamp = outputFrameCount * (1000000 / 30);
+                    const frame = new VideoFrame(bitmap, { timestamp: timestamp, duration: 1000000/30 });
+                    try {
+                        videoEncoder.encode(frame, { keyFrame: outputFrameCount % 30 === 0 });
+                    } finally {
+                        frame.close();
+                    }
+                    outputFrameCount++;
+                    for (const bmp of frameBuffer) {
+                        bmp.close();
+                    }
+                    frameBuffer = [];
                 }
-                outputFrameCount++;
             }
 
             if (onProgress) {
