@@ -39,9 +39,9 @@ function App() {
       if (loaded) return;
 
       // If not loaded, ensure script is added
-      if (!document.querySelector('script[src="https://docs.opencv.org/4.11.0/opencv.js"]')) {
+      if (!document.querySelector('script[src="https://docs.opencv.org/4.x/opencv.js"]')) {
         const script = document.createElement('script');
-        script.src = 'https://docs.opencv.org/4.11.0/opencv.js';
+        script.src = 'https://docs.opencv.org/4.x/opencv.js';
         script.async = true;
         script.onload = () => {
           // Poll for initialization
