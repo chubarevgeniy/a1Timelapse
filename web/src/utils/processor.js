@@ -1,9 +1,11 @@
 import * as Mp4Muxer from 'mp4-muxer';
+import { loadOpenCV } from './opencv';
 
 export const processVideo = async (file, config, onProgress) => {
   return new Promise(async (resolve, reject) => {
     try {
-      if (!window.cv || !window.cv.Mat) {
+      const cv = await loadOpenCV();
+      if (!cv || !cv.Mat) {
         reject(new Error("OpenCV not loaded yet."));
         return;
       }
@@ -56,8 +58,6 @@ export const processVideo = async (file, config, onProgress) => {
         bitrate: 2_000_000,
         framerate: 30,
       });
-
-      const cv = window.cv;
 
       // Calculate color bounds
       const colorMat = new cv.Mat(1, 1, cv.CV_8UC3);
