@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import VideoUploader from './components/VideoUploader';
 import Configurator from './components/Configurator';
+import ModeSelector from './components/ModeSelector';
+import LogProcessor from './components/LogProcessor';
 import { processVideo } from './utils/processor';
 import { loadOpenCV } from './utils/opencv';
 
 function App() {
+  const [mode, setMode] = useState(null); // null (home) | 'filter' | 'log'
   const [file, setFile] = useState(null);
   const [config, setConfig] = useState(null);
   const [processing, setProcessing] = useState(false);
@@ -12,6 +15,8 @@ function App() {
   const [resultUrl, setResultUrl] = useState(null);
   const [opencvLoaded, setOpencvLoaded] = useState(false);
 
+  // Load OpenCV in the background — only the Timelapse Filter mode needs it, so
+  // it must not block the home screen or the log-processing mode.
   useEffect(() => {
     let cancelled = false;
     loadOpenCV()
@@ -46,21 +51,43 @@ function App() {
     }
   };
 
-  if (!opencvLoaded) {
+  const goHome = () => {
+    setMode(null);
+    setFile(null);
+    setResultUrl(null);
+    setProcessing(false);
+  };
+
+  // Home screen
+  if (mode === null) {
     return (
-      <div className="loading-screen">
-        <h2 style={{border: 'none'}}>INITIALIZING SYSTEM</h2>
-        <div className="progress-track" style={{width: '300px', border: '2px solid black'}}>
-            <div className="progress-fill" style={{width: '100%', background: 'black', animation: 'indeterminate 2s infinite linear'}}></div>
-        </div>
-        <p style={{marginTop: '10px', fontWeight: 'bold'}}>LOADING OPENCV...</p>
+      <div className="app-container">
+        <h1>3D Print Studio</h1>
+        <ModeSelector onSelect={setMode} />
       </div>
     );
   }
 
+  // Printer log -> DaVinci mode (no OpenCV needed)
+  if (mode === 'log') {
+    return (
+      <div className="app-container">
+        <h1>3D Print Studio</h1>
+        <LogProcessor onBack={goHome} />
+      </div>
+    );
+  }
+
+  // Timelapse Filter mode
   return (
     <div className="app-container">
       <h1>Timelapse Filter</h1>
+
+      {!opencvLoaded && !resultUrl && (
+        <div className="opencv-loading">
+          <span className="spinner-dot" /> LOADING OPENCV ENGINE…
+        </div>
+      )}
 
       {!file && (
         <VideoUploader onFileSelect={setFile} />
@@ -71,6 +98,7 @@ function App() {
           file={file}
           onStart={handleStartProcessing}
           onCancel={() => setFile(null)}
+          opencvLoaded={opencvLoaded}
         />
       )}
 
@@ -101,6 +129,12 @@ function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {!file && !processing && (
+        <button onClick={goHome} className="btn btn-secondary mt-3">
+          ← MODE SELECT
+        </button>
       )}
     </div>
   );

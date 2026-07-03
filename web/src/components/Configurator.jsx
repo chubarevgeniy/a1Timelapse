@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-function Configurator({ file, onStart, onCancel }) {
+function Configurator({ file, onStart, onCancel, opencvLoaded = true }) {
   const [roi, setRoi] = useState(null); // [top, bottom, left, right]
   const [color, setColor] = useState([0, 255, 0]);
   const [colorTol, setColorTol] = useState(0.2);
@@ -428,7 +428,9 @@ function Configurator({ file, onStart, onCancel }) {
             </div>
 
             <div style={{marginTop: 'auto', paddingTop: '20px', borderTop: '2px solid black'}}>
-                <button onClick={handleStart} className="btn btn-primary">INITIALIZE PROCESS</button>
+                <button onClick={handleStart} className="btn btn-primary" disabled={!opencvLoaded}>
+                    {opencvLoaded ? 'INITIALIZE PROCESS' : 'LOADING ENGINE…'}
+                </button>
                 <button onClick={onCancel} className="btn btn-secondary mt-3">CANCEL</button>
             </div>
         </div>
