@@ -1,6 +1,15 @@
-# Bambu Timelapse Post-Processor (Web App)
+# 3D Print Studio (Web App)
 
-A client-side web application designed to smooth out timelapses from 3D printers (specifically Bambu Lab A1/A1 Mini). It filters video frames to keep only those where the print head is in a specific position (e.g., parked for a snapshot), creating a clean, professional-looking timelapse without the print head moving erratically.
+A client-side web application with two tools for 3D-printing timelapses. A mode
+selector on the home screen lets you switch between them.
+
+1. **Timelapse Filter** — smooths out timelapses from 3D printers (originally
+   Bambu Lab A1/A1 Mini) by keeping only the video frames where the print head
+   is in a specific position (e.g. parked for a snapshot).
+2. **Printer Log → DaVinci** — parses Klipper (`klippy.log`) files, lists the
+   prints found in them, and exports an FCPXML for DaVinci Resolve with a
+   marker (or a razor cut) at every chosen event, so you can turn a phone
+   timelapse into a per-event edit.
 
 **[🚀 Open the Web App](https://chubarevgeniy.github.io/a1Timelapse/)**
 
@@ -8,10 +17,34 @@ A client-side web application designed to smooth out timelapses from 3D printers
 
 ## Features
 
-- **100% Client-Side:** No video upload required. Processing happens entirely in your browser using OpenCV.js and WebCodecs.
-- **Privacy Focused:** Your videos never leave your device.
+- **100% Client-Side:** No upload required. Processing (video *and* logs) happens entirely in your browser.
+- **Privacy Focused:** Your videos and logs never leave your device.
 - **Fast:** Leverages modern browser capabilities for efficient video processing.
 - **Interactive Configuration:** Easily select the Region of Interest (ROI) and target color visually.
+
+## Printer Log → DaVinci
+
+This mode bridges your Klipper printer and your video editor.
+
+1. **Upload logs.** Select one or more `klippy.log` files. Klipper rotates the
+   log at 10&nbsp;MB, so a long print can span several files — upload all the
+   parts and they're stitched together on a single continuous timeline. (The
+   merge and event timing use the monotonic `Stats` clock, so they survive
+   reboots, NTP jumps and midnight rollovers.)
+2. **Pick a print.** Every print found in the logs is listed with its start
+   time and duration. Only prints whose **start _and_ end** are inside the
+   loaded logs can be processed (others are shown but disabled).
+3. **Choose an event ("feature").** Built-in detectors: *print-head change
+   (toolchange)*, *head park*, *head pick*. Layer changes are **not** written to
+   `klippy.log` by this firmware — if you add a macro that logs them (or want to
+   match any other line), use the **custom regex** option.
+4. **Set the timelapse speed** (e.g. 15x/30x). An event that happened `t`
+   real-seconds into the print lands at `t / speed` seconds on the video
+   timeline. Pick **markers** or **cuts (razor)** and export the `.fcpxml`.
+5. **In DaVinci Resolve:** *File → Import → Timeline…*, relink the offline clip
+   to your phone's timelapse, then slide the clip (or the markers) to line up
+   the first event and fine-tune. Because the mapping is linear, everything
+   else lines up once the start is synced.
 
 ## How to Use
 
