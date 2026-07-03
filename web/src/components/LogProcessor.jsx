@@ -13,6 +13,47 @@ const fmtDur = (s) => {
     : `${m}m${String(sec).padStart(2, '0')}s`;
 };
 
+function TimelapseMarkerHelp() {
+  return (
+    <details className="tl-help">
+      <summary>How to log every timelapse frame (OrcaSlicer)</summary>
+      <div className="tl-help-body">
+        <p>
+          This firmware never writes layer/frame changes to <code>klippy.log</code>,
+          but it <em>does</em> log any command it doesn't recognise. So drop one
+          throwaway command next to your existing timelapse trigger and it becomes a
+          per-frame marker.
+        </p>
+        <p>
+          OrcaSlicer → <strong>Printer settings → Machine G-code → Before layer
+          change G-code</strong>, add the marked line right after{' '}
+          <code>TIMELAPSE_TAKE_FRAME</code>:
+        </p>
+        <pre className="tl-help-code">{`;BEFORE_LAYER_CHANGE
+;[layer_z]
+G92 E0
+TIMELAPSE_TAKE_FRAME
+TIMELAPSE_LOG_FRAME        ; <-- add this line
+DEFECT_DETECTION_DETECT`}</pre>
+        <p>
+          Every layer the printer now logs{' '}
+          <code>Unknown command:"TIMELAPSE_LOG_FRAME"</code>, which this app reads as
+          the <strong>Timelapse frame</strong> feature. Because the marker lands at
+          the stable parked snapshot (not during the toolchange bed-drop), keeping
+          only these frames removes the up/down bed jitter.
+        </p>
+        <p className="tl-help-warn">
+          Harmless on this Snapmaker firmware — it already logs its own unknown
+          commands and keeps printing. Still, run one test print and make sure it
+          doesn't pause. If your setup treats unknown commands as errors, use{' '}
+          <strong>Custom pattern (regex)</strong> against any line your own macro
+          writes instead.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 const fmtDate = (d) =>
   d
     ? d.toLocaleString([], {
@@ -151,6 +192,7 @@ function LogProcessor({ onBack }) {
           browser.
         </p>
         {error && <p className="log-error">{error}</p>}
+        <TimelapseMarkerHelp />
         <button onClick={onBack} className="btn btn-secondary mt-3">
           ← MODE SELECT
         </button>
@@ -238,6 +280,7 @@ function LogProcessor({ onBack }) {
               ))}
             </select>
             <p className="field-hint">{f.hint}</p>
+            {featureId === 'timelapse' && <TimelapseMarkerHelp />}
             {featureId === 'custom' && (
               <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
                 <input
