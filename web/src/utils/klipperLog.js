@@ -48,6 +48,18 @@ export const FEATURES = {
       return m ? `pick ${m[1]}` : null;
     },
   },
+  timelapse: {
+    id: 'timelapse',
+    name: 'Timelapse frame (custom marker)',
+    hint: 'Fires on the "TIMELAPSE_LOG_FRAME" marker you add next to TIMELAPSE_TAKE_FRAME in OrcaSlicer (see "How to log every timelapse frame" below). It lands at the stable parked snapshot on every layer, so keeping only these frames drops the up/down bed jitter from the toolchange.',
+    detect: (text) => {
+      // The firmware doesn't log layer changes, but it does log any command it
+      // doesn't recognise ("Unknown command:\"X\""). A throwaway command added
+      // after TIMELAPSE_TAKE_FRAME therefore becomes a per-frame marker.
+      const m = /^Unknown command:"TIMELAPSE_LOG_FRAME"/.exec(text);
+      return m ? 'frame' : null;
+    },
+  },
   custom: {
     id: 'custom',
     name: 'Custom pattern (regex)',
@@ -134,7 +146,9 @@ function buildTimeline(files) {
   });
 
   const stream = []; // { wallSod, body, mono|null, fileIndex }
+  const firstIdxOfFile = []; // stream index of each file's first line
   ordered.forEach((f, fileIndex) => {
+    firstIdxOfFile[fileIndex] = stream.length;
     for (const ln of f.lines) stream.push({ ...ln, fileIndex });
   });
 
@@ -177,20 +191,40 @@ function buildTimeline(files) {
     ln.t = anchorMono[best] + wrapToNearest(ln.wallSod - anchorWall[best]);
   }
 
-  return { stream, ordered };
+  // Absolute-time anchors. Each rollover/start banner gives a real datetime
+  // (date AND time-of-day), and the config dump at the top of the file happens
+  // at that same instant — so we pair the banner's datetime with the monotonic
+  // time of the file's first line. Every other line's absolute date is then
+  // derived from the continuous monotonic clock, which is why a single file
+  // that spans several days (one banner, but the printer never restarted) no
+  // longer collapses every print onto the banner's calendar day.
+  const anchors = ordered.map((f, k) => {
+    if (!f.rolloverDate) return null;
+    const fi = firstIdxOfFile[k];
+    if (fi == null || fi >= stream.length || stream[fi].fileIndex !== k)
+      return null;
+    return { absMs: f.rolloverDate.getTime(), mono: stream[fi].t };
+  });
+  // A file without a banner (e.g. a middle rotation) inherits its neighbour's
+  // anchor — the monotonic clock is continuous across rotations, so any single
+  // anchor dates the whole session correctly.
+  for (let k = 1; k < anchors.length; k++)
+    if (!anchors[k]) anchors[k] = anchors[k - 1];
+  for (let k = anchors.length - 2; k >= 0; k--)
+    if (!anchors[k]) anchors[k] = anchors[k + 1];
+
+  return { stream, ordered, anchors };
 }
 
-function absDateFor(ordered, fileIndex, wallSod) {
-  const f = ordered[fileIndex];
-  if (!f || !f.rolloverDate) return null;
-  const d = new Date(f.rolloverDate);
-  d.setHours(0, 0, 0, 0);
-  return new Date(d.getTime() + wallSod * 1000);
+function absDateForLine(anchors, ln) {
+  const a = anchors[ln.fileIndex];
+  if (!a) return null;
+  return new Date(a.absMs + (ln.t - a.mono) * 1000);
 }
 
 // Detect prints in the merged stream. A print is "complete" only if we saw both
 // its start and its end within the loaded logs.
-function detectPrints(stream, ordered) {
+function detectPrints(stream, anchors) {
   const prints = [];
   let cur = null;
 
@@ -222,7 +256,7 @@ function detectPrints(stream, ordered) {
         path,
         startIndex: i,
         startT: stream[i].t,
-        startDate: absDateFor(ordered, stream[i].fileIndex, stream[i].wallSod),
+        startDate: absDateForLine(anchors, stream[i]),
         finishedFlag: false,
       };
       continue;
@@ -261,9 +295,9 @@ function detectPrints(stream, ordered) {
  */
 export function parseLogs(fileEntries) {
   const files = fileEntries.map((f) => parseFile(f.name, f.text));
-  const { stream, ordered } = buildTimeline(files);
-  const prints = detectPrints(stream, ordered);
-  return { prints, stream, ordered };
+  const { stream, ordered, anchors } = buildTimeline(files);
+  const prints = detectPrints(stream, anchors);
+  return { prints, stream, ordered, anchors };
 }
 
 /**
@@ -274,7 +308,7 @@ export function parseLogs(fileEntries) {
  * Returns [{ offsetSec, label, absDate? }] sorted by time.
  */
 export function extractEvents(parsed, print, feature) {
-  const { stream, ordered } = parsed;
+  const { stream, anchors } = parsed;
   const out = [];
   if (print.startIndex == null || print.endIndex == null) return out;
 
@@ -304,7 +338,7 @@ export function extractEvents(parsed, print, feature) {
       out.push({
         offsetSec: Math.max(0, ln.t - print.startT),
         label,
-        absDate: absDateFor(ordered, ln.fileIndex, ln.wallSod),
+        absDate: absDateForLine(anchors, ln),
       });
     }
   }

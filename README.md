@@ -35,9 +35,14 @@ This mode bridges your Klipper printer and your video editor.
    time and duration. Only prints whose **start _and_ end** are inside the
    loaded logs can be processed (others are shown but disabled).
 3. **Choose an event ("feature").** Built-in detectors: *print-head change
-   (toolchange)*, *head park*, *head pick*. Layer changes are **not** written to
-   `klippy.log` by this firmware — if you add a macro that logs them (or want to
-   match any other line), use the **custom regex** option.
+   (toolchange)*, *head park*, *head pick*, and *timelapse frame*. Layer changes
+   are **not** written to `klippy.log` by this firmware, but it does log any
+   command it doesn't recognise — so add a throwaway `TIMELAPSE_LOG_FRAME` line
+   right after `TIMELAPSE_TAKE_FRAME` in OrcaSlicer's *Before layer change
+   G-code* and the *timelapse frame* detector picks it up (the app shows the
+   exact snippet). Because that marker lands at the stable parked snapshot, not
+   during the toolchange bed-drop, keeping only those frames removes the up/down
+   bed jitter. For anything else, use the **custom regex** option.
 4. **Set the timelapse speed** (e.g. 15x/30x). An event that happened `t`
    real-seconds into the print lands at `t / speed` seconds on the video
    timeline. Pick **markers** or **cuts (razor)** and export the `.fcpxml`.

@@ -554,6 +554,47 @@ button:disabled {
 }
 .howto li { margin-bottom: 6px; }
 
+/* Timelapse marker help */
+.tl-help {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  margin-top: 15px;
+  font-size: 0.8rem;
+}
+.tl-help > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  user-select: none;
+}
+.tl-help[open] > summary { border-bottom: 2px solid var(--border); }
+.tl-help-body { padding: 12px; line-height: 1.5; }
+.tl-help-body p { margin: 0 0 10px 0; }
+.tl-help-body code {
+  font-family: monospace;
+  background: var(--secondary);
+  padding: 1px 4px;
+  word-break: break-word;
+}
+.tl-help-code {
+  font-family: monospace;
+  font-size: 0.75rem;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.4;
+  margin: 0 0 10px 0;
+}
+.tl-help-warn {
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+  opacity: 0.85;
+}
+
 /* Video Trimmer */
 .trim-timeline {
   position: relative;
