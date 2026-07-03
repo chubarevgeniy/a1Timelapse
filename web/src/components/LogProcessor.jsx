@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { parseLogs, extractEvents, FEATURES } from '../utils/klipperLog';
 import { buildFcpxml } from '../utils/fcpxml';
+import VideoTrimmer from './VideoTrimmer';
 
 const fmtDur = (s) => {
   if (s == null) return '--';
@@ -368,20 +369,40 @@ function LogProcessor({ onBack }) {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => setStage('prints')} className="btn btn-secondary">
               ← BACK
+            </button>
+            <button
+              onClick={() => setStage('preview')}
+              className="btn btn-secondary"
+              disabled={events.length === 0}
+              style={{ flex: 1, minWidth: '160px' }}
+            >
+              PREVIEW &amp; TRIM ▶
             </button>
             <button
               onClick={generate}
               className="btn btn-primary"
               disabled={events.length === 0}
+              style={{ flex: 1, minWidth: '160px' }}
             >
               EXPORT FCPXML
             </button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (stage === 'preview') {
+    return (
+      <VideoTrimmer
+        events={events}
+        scale={Number(scale) || 1}
+        printName={selected.filename}
+        onBack={() => setStage('configure')}
+      />
     );
   }
 

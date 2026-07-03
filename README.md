@@ -46,6 +46,23 @@ This mode bridges your Klipper printer and your video editor.
    the first event and fine-tune. Because the mapping is linear, everything
    else lines up once the start is synced.
 
+### Preview & trim in the browser
+
+Instead of (or before) exporting to DaVinci, you can load the phone timelapse
+right in the app and cut it there:
+
+- A **preview** slider (with per-frame step buttons) to scrub the video, and a
+  **sync offset** slider (also frame-precise) that shifts every event at once —
+  focus event #1, nudge the offset until the frame matches, and the rest falls
+  into place.
+- Event ticks are drawn on a mini timeline; it shows how many events land inside
+  the loaded video.
+- A **frames-per-event** setting (default 1) controls how many consecutive
+  source frames are kept at each event.
+- **Trim** extracts those frames (via WebCodecs) and hands back a downloadable
+  MP4 — turning a linear 15x/30x phone timelapse into a per-event edit without
+  leaving the browser.
+
 ## How to Use
 
 1. **Open the App:** Go to [chubarevgeniy.github.io/a1Timelapse](https://chubarevgeniy.github.io/a1Timelapse/).

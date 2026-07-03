@@ -553,3 +553,68 @@ button:disabled {
   padding-top: 15px;
 }
 .howto li { margin-bottom: 6px; }
+
+/* Video Trimmer */
+.trim-timeline {
+  position: relative;
+  height: 26px;
+  margin-top: 10px;
+  border: 2px solid var(--border);
+  background:
+    repeating-linear-gradient(90deg, var(--secondary) 0 1px, transparent 1px 40px);
+}
+
+.trim-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  padding: 0;
+  border: none;
+  background: var(--border);
+  cursor: pointer;
+  transform: translateX(-1px);
+}
+.trim-tick:hover { background: var(--accent); width: 3px; }
+.trim-tick.near { background: var(--accent); }
+.trim-tick.focused {
+  background: var(--accent);
+  width: 4px;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.trim-control {
+  margin-top: 15px;
+  border: 2px solid var(--border);
+  padding: 12px 15px;
+  background: var(--bg);
+}
+
+.trim-control-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.trim-control-head span { font-family: monospace; font-weight: 400; }
+
+.trim-control input[type="range"] { margin-bottom: 10px; }
+
+.trim-btn-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.trim-btn-row .btn { padding: 6px; font-size: 0.72rem; }
+
+@media (max-width: 560px) {
+  .trim-btn-row { grid-template-columns: 1fr 1fr; }
+}
+
+.trim-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
